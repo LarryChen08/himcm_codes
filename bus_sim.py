@@ -1,3 +1,4 @@
+import pandas as pd
 import pygame
 import sys
 import time
@@ -18,19 +19,23 @@ def traffic_light_init():
     return lights
 
 
-def bus_init(scr, lights):
+def bus_init(scr, lights, bus_num_total):
     file_path = os.path.join(os.getcwd(), 'Lines')
-    file_list = os.listdir(file_path)
     bus_data_list = []
-    for file in file_list:
-        line_file_path = os.path.join(file_path, file)
+    for line_number in range(len(bus_num_total)):
+        bus_name = bus_num_total.iloc[line_number, 0]
+        file_name = bus_name + '.txt'
+        line_file_path = os.path.join(file_path, file_name)
         with open(line_file_path, 'r') as f:
             line_file = f.read().splitlines()
         line = line_data_init(line_file)
-        bus_name = file.rstrip('.txt')
+        bus_num = bus_num_total.iloc[line_number, 1]
         line = add_traffic_light(line, lights)
-        bus_data = Bus(bus_name, line, lights, scr)
-        bus_data_list.append(bus_data)
+        for i in range(bus_num):
+            cur_bus_name = bus_name + '_' + str(i)
+            stop_time = 900 * i
+            bus_data = Bus(cur_bus_name, line, stop_time, scr)
+            bus_data_list.append(bus_data)
     return bus_data_list
 
 
@@ -81,9 +86,10 @@ class Bus(object):
         self.max_spd = 0.388  # 50km/h
         self.max_acc = 0.02  # 不知道
         self.mode = 1  # 0:stop, 1:accelerating, 2: constant motion, 3: decelerating 4: end
-        self.stop_time = 0
         self.direction = 0
-        self.lights = args[2]
+        self.stop_time = args[2]
+        if self.stop_time != 0:
+            self.mode = 0
         self.scr = args[3]
 
     def move(self, cur_time):
@@ -217,6 +223,7 @@ class Bus(object):
 
 
 # ----main----
+bus_num_df = pd.read_excel('bus_num.xlsx')
 traffic_lights = traffic_light_init()
 pygame.init()
 screen = pygame.display.set_mode((SCREEN_W * SCALE, SCREEN_H * SCALE))
@@ -224,7 +231,7 @@ img_path = os.path.join(os.getcwd(), 'route_map.png')
 img = pygame.image.load(img_path)
 img = pygame.transform.scale(img, (SCREEN_W * SCALE, SCREEN_H * SCALE))
 w, h = img.get_size()
-bus_list = bus_init(screen, traffic_lights)
+bus_list = bus_init(screen, traffic_lights, bus_num_df)
 current_time = 0  # 0 - 86400 for each day
 while True:
     for event in pygame.event.get():
