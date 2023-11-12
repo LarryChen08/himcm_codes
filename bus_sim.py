@@ -1,3 +1,4 @@
+import pandas as pd
 import pygame
 import sys
 import time
@@ -90,6 +91,8 @@ class Bus(object):
         if self.mode == 0:
             self.move_mode_0()
             return
+        if self.mode == 4:
+            return
         time_period = self.calc_time_period(cur_time)  # 0:normal 1:morning peak 2:evening peak
         current_pos = [self.x, self.y]
         next_stop = self.stops[self.stop_num + 1][:2]
@@ -114,7 +117,11 @@ class Bus(object):
         self.mode = 0
         self.spd = 0
         if self.x == self.stops[-1][0] and self.y == self.stops[-1][1]:
-            self.direction = 1 - self.direction
+            if self.direction == 2:
+                self.mode = 4
+                result.loc[self.line_num] = [math.ceil(current_time / 900)]
+                return
+            self.direction = 2
             self.stops = self.stops[::-1]
             self.stop_num = -1
         current_stop = self.stops[self.stop_num + 1]
@@ -127,9 +134,9 @@ class Bus(object):
             self.stop_time -= 1
         else:
             if stop_flag:
-                self.stop_time = 5  # 30  # stop time
+                self.stop_time = 30  # stop time
             else:
-                self.stop_time = 3  # random.randint(1, 30)  # traffic light
+                self.stop_time = random.randint(1, 30)  # traffic light
         self.draw()
 
     def move_mode_1(self):
@@ -226,6 +233,7 @@ img = pygame.transform.scale(img, (SCREEN_W * SCALE, SCREEN_H * SCALE))
 w, h = img.get_size()
 bus_list = bus_init(screen, traffic_lights)
 current_time = 0  # 0 - 86400 for each day
+result = pd.DataFrame([], columns = ['cars'])
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -236,7 +244,7 @@ while True:
         bus.move(current_time)
     pygame.display.update()
     current_time += 1
-    print(current_time)
-    if current_time >= 86400:
+    if current_time >= 7200:
+        result.to_excel('bus_num.xlsx')
         pygame.quit()
         sys.exit()
