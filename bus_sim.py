@@ -83,8 +83,8 @@ class Bus(object):
         self.spd = 0
         self.slope = 0
         self.stop_num = 0
-        self.max_spd = 0.388  # 50km/h
-        self.max_acc = 0.02  # 不知道
+        self.max_spd = 23.3  # 50km/h
+        self.max_acc = 2  # 不知道
         self.mode = 1  # 0:stop, 1:accelerating, 2: constant motion, 3: decelerating 4: end
         self.direction = 0
         self.stop_time = args[2]
@@ -92,7 +92,7 @@ class Bus(object):
             self.mode = 0
         self.scr = args[3]
 
-    def move(self, cur_time):
+    def move(self, cur_time, weather):
         if self.mode == 0:
             self.move_mode_0()
             return
@@ -102,7 +102,7 @@ class Bus(object):
         self.slope = self.calc_direct(current_pos, next_stop)
         distance = self.calc_distance(current_pos, next_stop)
         stop_distance = self.calc_stop_distance(self.spd, self.max_acc)
-        self.max_spd = self.calc_max_spd(time_period)
+        self.max_spd = self.calc_max_spd(time_period, weather)
         if self.judge_stop(current_pos, next_stop):
             self.x, self.y = next_stop[0], next_stop[1]
             self.move_mode_0()
@@ -207,19 +207,82 @@ class Bus(object):
 
     @staticmethod
     def calc_time_period(cur_time):
-        if 28800 <= cur_time <= 32400:
+        if 480 <= cur_time <= 540:
             return 1
-        if 61200 <= cur_time <= 64800:
+        if 1020 <= cur_time <= 1080:
             return 2
         return 0
 
     @staticmethod
-    def calc_max_spd(time_period):
+    def calc_max_spd(time_period, weather):
         if time_period == 1:
-            return 0.342
-        if time_period == 2:
-            return 0.334
-        return 0.388
+            max_spd = 20.5
+        elif time_period == 2:
+            max_spd = 20.1
+        else:
+            max_spd = 23.3
+        if weather == 1:
+            speed_decrease = random.randint(3, 13)
+            max_spd *= (100 - speed_decrease) / 100
+        elif weather == 2:
+            speed_decrease = random.randint(5, 15)
+            max_spd *= (100 - speed_decrease) / 100
+        return max_spd
+
+
+class Framework(object):
+    def __init__(self, buses):
+        self.year = 2023
+        self.month = 1
+        self.month_days = [31, 30, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        self.day = 1
+        self.min = 1
+        self.rain_prob = [13.2, 17.1, 16.1, 8.7, 3.6, 0, 0, 0, 0, 1.1, 3.3, 12.1]
+        self.rain_probability = int((13.2 / 2.5 / 24) * 100)
+        self.weather_list = ['sunny', 'rainy', 'sand storm']
+        self.buses = buses
+        self.weather = self.generate_weather()
+        self.start_time = time.time()
+
+    def move(self):
+        self.min += 1
+        if self.min > 1440:
+            self.min = 1
+            self.day += 1
+            self.weather = self.generate_weather()
+        if self.day > self.month_days[self.month]:
+            self.day = 1
+            self.month += 1
+        if self.month > 12:
+            self.month = 1
+            self.year += 1
+        if self.month > 2033:
+            print(time.time() - self.start_time)
+            pygame.quit()
+            sys.exit()
+        for i in range(len(self.buses)):
+            bus = self.buses[i]
+            bus.move(self.min, self.weather)
+
+    def generate_weather(self):
+        rain_probability = int((self.rain_prob[self.month] / 2.5 / 24) * 100)
+        weather = self.judge_weather(rain_probability)
+        print(f'{self.year}/{self.month}/{self.day}:{self.weather_list[weather]}')
+        return weather
+
+    @staticmethod
+    def judge_weather(rain_probability):
+        weather_num = random.randint(1, 10000)
+        if 1 <= weather_num <= rain_probability:
+            return 1  # rain
+        if 9290 <= weather_num <= 10000:
+            return 2  # sand storm
+        return 0  # sun
+
+
+
+
+
 
 
 # ----main----
@@ -232,18 +295,13 @@ img = pygame.image.load(img_path)
 img = pygame.transform.scale(img, (SCREEN_W * SCALE, SCREEN_H * SCALE))
 w, h = img.get_size()
 bus_list = bus_init(screen, traffic_lights, bus_num_df)
-current_time = 0  # 0 - 86400 for each day
+frame = Framework(bus_list)
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
     screen.blit(img, (0, 0), (0, 0, w, h))
-    for bus in bus_list:
-        bus.move(current_time)
+    frame.move()
     pygame.display.update()
-    current_time += 1
-    print(current_time)
-    if current_time >= 86400:
-        pygame.quit()
-        sys.exit()
+
