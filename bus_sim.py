@@ -83,8 +83,8 @@ class Bus(object):
         self.spd = 0
         self.slope = 0
         self.stop_num = 0
-        self.max_spd = 23.3  # 50km/h
-        self.max_acc = 2  # 不知道
+        self.max_spd = 0.388  # 50km/h
+        self.max_acc = 0.02  # 不知道
         self.mode = 1  # 0:stop, 1:accelerating, 2: constant motion, 3: decelerating 4: end
         self.direction = 0
         self.stop_time = args[2]
@@ -216,11 +216,11 @@ class Bus(object):
     @staticmethod
     def calc_max_spd(time_period, weather):
         if time_period == 1:
-            max_spd = 20.5
+            max_spd = 0.342
         elif time_period == 2:
-            max_spd = 20.1
+            max_spd = 0.334
         else:
-            max_spd = 23.3
+            max_spd = 0.388
         if weather == 1:
             speed_decrease = random.randint(3, 13)
             max_spd *= (100 - speed_decrease) / 100
