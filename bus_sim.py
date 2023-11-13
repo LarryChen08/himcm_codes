@@ -19,7 +19,7 @@ def traffic_light_init():
     return lights
 
 
-def bus_init(scr, lights, bus_num_total):
+def bus_init(lights, bus_num_total):
     file_path = os.path.join(os.getcwd(), 'Lines')
     bus_data_list = []
     for line_number in range(len(bus_num_total)):
@@ -34,7 +34,7 @@ def bus_init(scr, lights, bus_num_total):
         for i in range(bus_num):
             cur_bus_name = bus_name + '_' + str(i)
             stop_time = 900 * i
-            bus_data = Bus(cur_bus_name, line, stop_time, scr)
+            bus_data = Bus(cur_bus_name, line, stop_time)
             bus_data_list.append(bus_data)
     return bus_data_list
 
@@ -88,9 +88,10 @@ class Bus(object):
         self.mode = 1  # 0:stop, 1:accelerating, 2: constant motion, 3: decelerating 4: end
         self.direction = 0
         self.stop_time = args[2]
+        self.distance = 0
         if self.stop_time != 0:
             self.mode = 0
-        self.scr = args[3]
+        # self.scr = args[3]
 
     def move(self, cur_time, weather):
         if self.mode == 0:
@@ -141,23 +142,27 @@ class Bus(object):
     def move_mode_1(self):
         self.mode = 1
         self.spd += self.max_acc
+        self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
         self.draw()
 
     def move_mode_2(self):
         self.mode = 2
         self.spd = self.max_spd
+        self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
         self.draw()
 
     def move_mode_3(self):
         self.mode = 3
         self.spd -= self.max_acc
+        self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
         self.draw()
 
     def draw(self):
-        pygame.draw.circle(self.scr, (0, 0, 0), (self.x * SCALE, self.y * SCALE), 4)
+        # pygame.draw.circle(self.scr, (0, 0, 0), (self.x * SCALE, self.y * SCALE), 4)
+        return
 
     @staticmethod
     def calc_direct(current_stop, next_stop):
@@ -241,28 +246,37 @@ class Framework(object):
         self.rain_probability = int((13.2 / 2.5 / 24) * 100)
         self.weather_list = ['sunny', 'rainy', 'sand storm']
         self.buses = buses
+        self.total_distance = 0
         self.weather = self.generate_weather()
         self.start_time = time.time()
 
     def move(self):
         self.min += 1
-        if self.min > 1440:
+        if self.min > 900:
             self.min = 1
             self.day += 1
             self.weather = self.generate_weather()
-        if self.day > self.month_days[self.month]:
+        if self.day > self.month_days[self.month - 1]:
             self.day = 1
             self.month += 1
         if self.month > 12:
             self.month = 1
             self.year += 1
-        if self.month > 2033:
+        if self.year > 2023:
             print(time.time() - self.start_time)
-            pygame.quit()
+            self.calc_emission()
             sys.exit()
         for i in range(len(self.buses)):
             bus = self.buses[i]
             bus.move(self.min, self.weather)
+            self.total_distance += bus.distance
+
+    def calc_emission(self):
+        fuel_emission = self.total_distance * 0.284 * 3140
+        electricity_emission = self.total_distance * 0.7 * 41
+        print(f'100% electrical:{electricity_emission}')
+        print(f'50% electrical:{electricity_emission * 0.5 + fuel_emission * 0.5}')
+        print(f'0% electrical:{fuel_emission}')
 
     def generate_weather(self):
         rain_probability = int((self.rain_prob[self.month] / 2.5 / 24) * 100)
@@ -280,28 +294,11 @@ class Framework(object):
         return 0  # sun
 
 
-
-
-
-
-
 # ----main----
 bus_num_df = pd.read_excel('bus_num.xlsx')
 traffic_lights = traffic_light_init()
-pygame.init()
-screen = pygame.display.set_mode((SCREEN_W * SCALE, SCREEN_H * SCALE))
-img_path = os.path.join(os.getcwd(), 'route_map.png')
-img = pygame.image.load(img_path)
-img = pygame.transform.scale(img, (SCREEN_W * SCALE, SCREEN_H * SCALE))
-w, h = img.get_size()
-bus_list = bus_init(screen, traffic_lights, bus_num_df)
+bus_list = bus_init(traffic_lights, bus_num_df)
 frame = Framework(bus_list)
 while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-    screen.blit(img, (0, 0), (0, 0, w, h))
     frame.move()
-    pygame.display.update()
 
