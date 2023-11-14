@@ -29,13 +29,9 @@ def bus_init(scr, lights, bus_num_total):
         with open(line_file_path, 'r') as f:
             line_file = f.read().splitlines()
         line = line_data_init(line_file)
-        bus_num = bus_num_total.iloc[line_number, 1]
         line = add_traffic_light(line, lights)
-        for i in range(bus_num):
-            cur_bus_name = bus_name + '_' + str(i)
-            stop_time = 900 * i
-            bus_data = Bus(cur_bus_name, line, stop_time, scr)
-            bus_data_list.append(bus_data)
+        bus_data = Bus(bus_name, line, 0, scr)
+        bus_data_list.append(bus_data)
     return bus_data_list
 
 
@@ -88,6 +84,7 @@ class Bus(object):
         self.mode = 1  # 0:stop, 1:accelerating, 2: constant motion, 3: decelerating 4: end
         self.direction = 0
         self.stop_time = args[2]
+        self.distance = 0
         if self.stop_time != 0:
             self.mode = 0
         self.scr = args[3]
@@ -133,28 +130,27 @@ class Bus(object):
             self.stop_time -= 1
         else:
             if stop_flag:
-                self.stop_time = 5  # 30  # stop time
+                self.stop_time = 30  # stop time
             else:
-                self.stop_time = 3  # random.randint(1, 30)  # traffic light
-        self.draw()
+                self.stop_time = random.randint(1, 60)  # traffic light
 
     def move_mode_1(self):
         self.mode = 1
         self.spd += self.max_acc
+        self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
-        self.draw()
 
     def move_mode_2(self):
         self.mode = 2
         self.spd = self.max_spd
+        self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
-        self.draw()
 
     def move_mode_3(self):
         self.mode = 3
         self.spd -= self.max_acc
+        self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
-        self.draw()
 
     def draw(self):
         pygame.draw.circle(self.scr, (0, 0, 0), (self.x * SCALE, self.y * SCALE), 4)
@@ -288,20 +284,18 @@ class Framework(object):
 # ----main----
 bus_num_df = pd.read_excel('bus_num.xlsx')
 traffic_lights = traffic_light_init()
-pygame.init()
-screen = pygame.display.set_mode((SCREEN_W * SCALE, SCREEN_H * SCALE))
-img_path = os.path.join(os.getcwd(), 'route_map.png')
-img = pygame.image.load(img_path)
-img = pygame.transform.scale(img, (SCREEN_W * SCALE, SCREEN_H * SCALE))
-w, h = img.get_size()
-bus_list = bus_init(screen, traffic_lights, bus_num_df)
+bus_list = bus_init(1, traffic_lights, bus_num_df)
 frame = Framework(bus_list)
+current_time = 0
 while True:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-    screen.blit(img, (0, 0), (0, 0, w, h))
-    frame.move()
-    pygame.display.update()
+    current_time += 1
+    print(current_time)
+    for i in range(len(bus_list)):
+        bus = bus_list[i]
+        bus.move(current_time,0)
+    if current_time > 54000:
+        for bus in bus_list:
+            print([bus.line_num, int(bus.distance)])
+        sys.exit()
+
 
