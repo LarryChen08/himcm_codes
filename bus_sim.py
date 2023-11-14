@@ -1,5 +1,4 @@
 import pandas as pd
-import pygame
 import sys
 import time
 import os
@@ -34,7 +33,7 @@ def bus_init(lights, bus_num_total):
         for i in range(bus_num):
             cur_bus_name = bus_name + '_' + str(i)
             stop_time = 900 * i
-            bus_data = Bus(cur_bus_name, line, stop_time)
+            bus_data = Bus(cur_bus_name, line, stop_time, 15 * bus_num, 1)
             bus_data_list.append(bus_data)
     return bus_data_list
 
@@ -78,6 +77,7 @@ class Bus(object):
     def __init__(self, *args):
         self.line_num = args[0]
         self.stops = args[1]
+        self.stops_direct = args[1]
         self.x = args[1][0][0]
         self.y = args[1][0][1]
         self.spd = 0
@@ -88,14 +88,26 @@ class Bus(object):
         self.mode = 1  # 0:stop, 1:accelerating, 2: constant motion, 3: decelerating 4: end
         self.direction = 0
         self.stop_time = args[2]
+        self.min_run_time = args[3]
         self.distance = 0
+        self.power = args[4]  # 0:fuel 1:electricity
         if self.stop_time != 0:
             self.mode = 0
-        # self.scr = args[3]
+
+    def day_init(self):
+        if self.stops != self.stops_direct:
+            self.stops = self.stops[::1]
+        self.x, self.y = self.stops[0], self.stops[1]
+        self.spd, self.slope = 0, 0
+        self.mode, self.stop_time = 1, 0
+        line_number = int(self.line_num[-1])
+        if line_number != 0:
+            self.stop_time = 15 * line_number
+            self.mode = 0
 
     def move(self, cur_time, weather):
         if self.mode == 0:
-            self.move_mode_0()
+            self.move_mode_0(cur_time)
             return
         time_period = self.calc_time_period(cur_time)  # 0:normal 1:morning peak 2:evening peak
         current_pos = [self.x, self.y]
@@ -106,10 +118,10 @@ class Bus(object):
         self.max_spd = self.calc_max_spd(time_period, weather)
         if self.judge_stop(current_pos, next_stop):
             self.x, self.y = next_stop[0], next_stop[1]
-            self.move_mode_0()
+            self.move_mode_0(cur_time)
         elif self.spd >= distance:
             self.x, self.y = next_stop[0], next_stop[1]
-            self.move_mode_0()
+            self.move_mode_0(cur_time)
         elif stop_distance >= distance:
             self.move_mode_3()
         elif self.spd + self.max_acc >= self.max_spd:
@@ -117,10 +129,12 @@ class Bus(object):
         else:
             self.move_mode_1()
 
-    def move_mode_0(self):
+    def move_mode_0(self, cur_time):
         self.mode = 0
         self.spd = 0
         if self.x == self.stops[-1][0] and self.y == self.stops[-1][1]:
+            if 900 - cur_time <= self.min_run_time:
+                self.stop_time = 900 - cur_time
             self.direction = 1 - self.direction
             self.stops = self.stops[::-1]
             self.stop_num = -1
@@ -134,35 +148,26 @@ class Bus(object):
             self.stop_time -= 1
         else:
             if stop_flag:
-                self.stop_time = 5  # 30  # stop time
+                self.stop_time = 1  # stop time
             else:
-                self.stop_time = 3  # random.randint(1, 30)  # traffic light
-        self.draw()
+                self.stop_time = 1  # traffic light
 
     def move_mode_1(self):
         self.mode = 1
         self.spd += self.max_acc
         self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
-        self.draw()
 
     def move_mode_2(self):
         self.mode = 2
         self.spd = self.max_spd
         self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
-        self.draw()
 
     def move_mode_3(self):
         self.mode = 3
         self.spd -= self.max_acc
-        self.distance += self.spd
         self.x, self.y = self.calc_new_pos(self.x, self.y, self.spd, self.slope)
-        self.draw()
-
-    def draw(self):
-        # pygame.draw.circle(self.scr, (0, 0, 0), (self.x * SCALE, self.y * SCALE), 4)
-        return
 
     @staticmethod
     def calc_direct(current_stop, next_stop):
@@ -246,40 +251,65 @@ class Framework(object):
         self.rain_probability = int((13.2 / 2.5 / 24) * 100)
         self.weather_list = ['sunny', 'rainy', 'sand storm']
         self.buses = buses
-        self.total_distance = 0
         self.weather = self.generate_weather()
         self.start_time = time.time()
 
     def move(self):
         self.min += 1
         if self.min > 900:
+            for i in range(len(self.buses)):
+                bus = self.buses[i]
+                print(bus.distance)
+            sys.exit()
             self.min = 1
             self.day += 1
             self.weather = self.generate_weather()
-        if self.day > self.month_days[self.month - 1]:
-            self.day = 1
-            self.month += 1
-        if self.month > 12:
-            self.month = 1
-            self.year += 1
-        if self.year > 2023:
-            print(time.time() - self.start_time)
-            self.calc_emission()
-            sys.exit()
+            if self.day > self.month_days[self.month - 1]:
+                self.day = 1
+                self.month += 1
+                if self.month > 12:
+                    self.month = 1
+                    self.year += 1
+                    if self.year > 2023:
+                        print(time.time() - self.start_time)
+                        self.calc_emission_1()
+                        sys.exit()
         for i in range(len(self.buses)):
             bus = self.buses[i]
             bus.move(self.min, self.weather)
-            self.total_distance += bus.distance
 
     def calc_emission(self):
-        fuel_emission = self.total_distance * 0.284 * 3140
-        electricity_emission = self.total_distance * 0.7 * 41
-        print(f'100% electrical:{electricity_emission}')
-        print(f'50% electrical:{electricity_emission * 0.5 + fuel_emission * 0.5}')
-        print(f'0% electrical:{fuel_emission}')
+        fuel_distance = 0
+        electricity_distance = 0
+        for i in range(len(self.buses)):
+            bus = self.buses[i]
+            if bus.power:
+                electricity_distance += bus.distance
+            else:
+                fuel_distance += bus.distance
+        electricity_usage = electricity_distance / 28 * 0.7
+        fuel_usage = fuel_distance / 28 * 0.284
+        electricity_emission_co2 = electricity_usage * 41
+        fuel_emission_co2 = fuel_usage * 3310
+        electricity_emission_hg = electricity_usage * 0.1
+        fuel_emission_hg = fuel_usage * 15
+        electricity_emission_cd = electricity_usage * 0.02
+        fuel_emission_cd = fuel_usage * 4
+        print(f'emission of co2:{fuel_emission_co2 + electricity_emission_co2}')
+        print(f'emission of hg:{fuel_emission_hg + electricity_emission_hg}')
+        print(f'emission of cd:{fuel_emission_cd + electricity_emission_cd}')
+
+    def calc_emission_1(self):
+        for i in range(len(self.buses)):
+            bus = self.buses[i]
+            if bus.power:
+                electricity_distance += bus.distance
+            else:
+                fuel_distance += bus.distance
+
 
     def generate_weather(self):
-        rain_probability = int((self.rain_prob[self.month] / 2.5 / 24) * 100)
+        rain_probability = int((self.rain_prob[self.month - 1] / 2.5 / 24) * 100)
         weather = self.judge_weather(rain_probability)
         print(f'{self.year}/{self.month}/{self.day}:{self.weather_list[weather]}')
         return weather
@@ -301,4 +331,3 @@ bus_list = bus_init(traffic_lights, bus_num_df)
 frame = Framework(bus_list)
 while True:
     frame.move()
-
